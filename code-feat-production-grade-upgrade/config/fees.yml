@@ -1,0 +1,43 @@
+# This file centralizes fee configurations for the ArbitrageEngine.
+# It allows for easier updates without changing the Python code.
+
+# Default fees are used for any exchange not explicitly listed below.
+default:
+  taker: 0.002
+  withdrawal_fees:
+    BTC: 0.0005
+    ETH: 0.005
+    USDT: 20.0
+    DEFAULT: 15.0 # A default withdrawal fee for unlisted assets
+
+# Exchange-specific fees (lowercase names)
+binance:
+  taker: 0.001
+  withdrawal_fees:
+    BTC: 0.0002
+    ETH: 0.001
+    USDT: 1.0
+
+kraken:
+  taker: 0.0025
+  withdrawal_fees:
+    BTC: 0.0004
+    ETH: 0.004
+    USDT: 5.0
+
+coinbase:
+  taker: 0.005
+  withdrawal_fees:
+    BTC: 0.0
+    ETH: 0.0
+    USDT: 0.0 # Withdrawals to own network are often free
+
+'uniswap v3':
+  taker: 0.003 # This represents the pool fee
+  # This can be used to approximate the gas cost for a swap in ETH
+  withdrawal_fees:
+    ETH: 0.01
+
+thorchain:
+  taker: 0.003 # This is an approximation; real fees are in the quote
+  withdrawal_fees: {} # Fees are already calculated in the provider's quote

@@ -1,0 +1,14 @@
+services:
+  # The Streamlit application service
+  app:
+    build: .
+    container_name: crypto_comparator_app
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount the current directory into the container for live-reloading during development.
+      # This also ensures the SQLite database file persists on the host machine.
+      - .:/app
+    env_file:
+      - .env
+    restart: unless-stopped
