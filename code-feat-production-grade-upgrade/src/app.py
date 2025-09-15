@@ -251,7 +251,7 @@ def show_dashboard(engine: ArbitrageEngine, providers: List[BaseProvider]):
         with action_col4:
             auto_refresh = st.checkbox("自动刷新 (30s)", value=False, key="auto_refresh_pro")
 
-    col1, col2 = st.columns([4, 1])
+    col1, col2 = st.columns([2, 1])
 
     with col1:
         st.subheader("📈 实时套利机会排行榜")
