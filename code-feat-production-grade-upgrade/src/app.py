@@ -251,356 +251,354 @@ def show_dashboard(engine: ArbitrageEngine, providers: List[BaseProvider]):
         with action_col4:
             auto_refresh = st.checkbox("自动刷新 (30s)", value=False, key="auto_refresh_pro")
 
-    col1, col2 = st.columns([2, 1])
+    st.subheader("📈 实时套利机会排行榜")
 
-    with col1:
-        st.subheader("📈 实时套利机会排行榜")
-        
-        # Filter controls
-        filter_col1, filter_col2 = st.columns(2)
-        with filter_col1:
-            min_profit_filter = st.number_input("最小收益率过滤 (%)", min_value=0.0, max_value=5.0, value=0.1, step=0.05, key="profit_filter")
-        with filter_col2:
-            sort_by = st.selectbox("排序方式", ["收益率", "净利润", "交易量"], key="sort_method")
-        
-        opp_placeholder = st.empty()
-        with st.spinner("正在寻找套利机会..."):
-            opportunities = safe_run_async(engine.find_opportunities(st.session_state.selected_symbols))
-            
-            # Filter opportunities based on user criteria
-            filtered_opps = [opp for opp in opportunities if opp.get('profit_percentage', 0) >= min_profit_filter]
-            
-            if not filtered_opps:
-                opp_placeholder.info(f"🔍 未发现收益率 ≥ {min_profit_filter}% 的套利机会")
-            else:
-                df = pd.DataFrame(filtered_opps)
-                df = df.sort_values(by="profit_percentage", ascending=False)
-                
-                # Enhanced display with more professional metrics
-                display_df = df[['profit_percentage', 'buy_at', 'sell_at', 'net_profit_usd', 'symbol']].copy()
-                display_df['路径'] = display_df['buy_at'] + ' → ' + display_df['sell_at']
-                display_df['风险等级'] = display_df['profit_percentage'].apply(
-                    lambda x: '🟢 低' if x < 1 else '🟡 中' if x < 3 else '🔴 高'
-                )
-                display_df['执行难度'] = display_df['profit_percentage'].apply(
-                    lambda x: '简单' if x < 2 else '中等' if x < 5 else '困难'
-                )
-                
-                final_df = display_df[['profit_percentage', '路径', 'net_profit_usd', '风险等级', '执行难度', 'symbol']]
-                final_df.columns = ['收益率(%)', '套利路径', '净利润(USD)', '风险等级', '执行难度', '交易对']
-                
-                # Add action buttons for top opportunities
-                if len(final_df) > 0:
-                    st.success(f"🎯 发现 {len(final_df)} 个套利机会！")
-                    
-                opp_placeholder.dataframe(
-                    final_df,
-                    width='stretch',
-                    hide_index=True,
-                    column_config={
-                        "收益率(%)": st.column_config.NumberColumn(format="%.4f%%"),
-                        "净利润(USD)": st.column_config.NumberColumn(format="$%.2f"),
-                    }
-                )
-                
-                # Quick execution buttons for top 3 opportunities
-                if len(final_df) >= 1:
-                    st.markdown("**⚡ 快速执行 (模拟)**")
-                    exec_col1, exec_col2, exec_col3 = st.columns(3)
-                    
-                    for i, (idx, row) in enumerate(final_df.head(3).iterrows()):
-                        with [exec_col1, exec_col2, exec_col3][i]:
-                            if st.button(f"执行 #{i+1} ({row['收益率(%)']}%)", key=f"exec_{i}", use_container_width=True):
-                                st.success(f"模拟执行套利: {row['套利路径']} - 预期收益: {row['净利润(USD)']}")
+    # Filter controls
+    filter_col1, filter_col2 = st.columns(2)
+    with filter_col1:
+        min_profit_filter = st.number_input("最小收益率过滤 (%)", min_value=0.0, max_value=5.0, value=0.1, step=0.05, key="profit_filter")
+    with filter_col2:
+        sort_by = st.selectbox("排序方式", ["收益率", "净利润", "交易量"], key="sort_method")
 
-    with col2:
-        st.subheader("💰 套利收益计算器")
+    opp_placeholder = st.empty()
+    with st.spinner("正在寻找套利机会..."):
+        opportunities = safe_run_async(engine.find_opportunities(st.session_state.selected_symbols))
         
-        with st.container():
-            calc_col1, calc_col2 = st.columns(2)
-            
-            with calc_col1:
-                investment_amount = st.number_input("投资金额 (USDT)", min_value=100, max_value=1000000, value=10000, step=100, key="investment")
-                expected_profit = st.number_input("预期收益率 (%)", min_value=0.01, max_value=20.0, value=1.0, step=0.01, key="expected_profit")
-            
-            with calc_col2:
-                trading_fee = st.number_input("交易手续费 (%)", min_value=0.0, max_value=1.0, value=0.1, step=0.01, key="trading_fee")
-                slippage = st.number_input("滑点损失 (%)", min_value=0.0, max_value=5.0, value=0.2, step=0.01, key="slippage")
-            
-            # Calculate results
-            gross_profit = investment_amount * (expected_profit / 100)
-            total_fees = investment_amount * ((trading_fee * 2 + slippage) / 100)  # Buy + Sell fees + slippage
-            net_profit = gross_profit - total_fees
-            roi = (net_profit / investment_amount) * 100
-            
-            # Display results
-            st.markdown("**📊 收益分析**")
-            result_col1, result_col2, result_col3 = st.columns(3)
-            
-            with result_col1:
-                st.metric("毛利润", f"${gross_profit:.2f}")
-            with result_col2:
-                st.metric("总费用", f"${total_fees:.2f}")
-            with result_col3:
-                color = "normal" if net_profit > 0 else "inverse"
-                st.metric("净利润", f"${net_profit:.2f}", f"{roi:.3f}%")
-            
-            # Risk assessment
-            if net_profit > 0:
-                if roi > 0.5:
-                    st.success(f"🟢 高收益机会: 净收益率 {roi:.3f}%")
-                elif roi > 0.1:
-                    st.info(f"🟡 中等机会: 净收益率 {roi:.3f}%")
-                else:
-                    st.warning(f"🟠 低收益机会: 净收益率 {roi:.3f}%")
-            else:
-                st.error(f"🔴 亏损风险: 净收益率 {roi:.3f}%")
+        # Filter opportunities based on user criteria
+        filtered_opps = [opp for opp in opportunities if opp.get('profit_percentage', 0) >= min_profit_filter]
         
-        st.markdown("---")
-        st.subheader("📊 实时价格对比表")
-        
-        # 价格对比控制面板
-        price_control_col1, price_control_col2, price_control_col3 = st.columns(3)
-        with price_control_col1:
-            highlight_best = st.checkbox("高亮最优价格", value=True, key="highlight_best_price")
-        with price_control_col2:
-            show_percentage = st.checkbox("显示价差百分比", value=True, key="show_price_percentage")
-        with price_control_col3:
-            auto_sort = st.checkbox("按价差排序", value=True, key="auto_sort_prices")
-        
-        price_placeholder = st.empty()
-
-        with st.spinner("正在获取最新价格..."):
-            tasks = []
-            provider_symbol_pairs = []
-            cex_providers = [p for p in providers if isinstance(p, CEXProvider)]
-            for symbol in st.session_state.selected_symbols:
-                for provider in cex_providers:
-                    tasks.append(provider.get_ticker(symbol))
-                    provider_symbol_pairs.append((provider.name, symbol))
-
-            all_tickers = safe_run_async(asyncio.gather(*tasks))
-
-            if all_tickers:
-                # Filter out errors and process into a list of dicts
-                processed_tickers = [
-                    {'symbol': t['symbol'], 'provider': provider_symbol_pairs[i][0], 'price': t['last'], 'volume': t.get('baseVolume', 0), 'change': t.get('percentage', 0)}
-                    for i, t in enumerate(all_tickers) if t and 'error' not in t
-                ]
-                if processed_tickers:
-                    price_df = pd.DataFrame(processed_tickers)
-                    # Create a pivot table: symbols as rows, providers as columns, prices as values
-                    pivot_df = price_df.pivot(index='symbol', columns='provider', values='price')
-                    
-                    # Add price statistics and comparison metrics
-                    if len(pivot_df.columns) > 1:
-                        pivot_df['最高价'] = pivot_df.max(axis=1, numeric_only=True)
-                        pivot_df['最低价'] = pivot_df.min(axis=1, numeric_only=True)
-                        pivot_df['价差'] = pivot_df['最高价'] - pivot_df['最低价']
-                        pivot_df['价差%'] = (pivot_df['价差'] / pivot_df['最低价'] * 100).round(4)
-                        pivot_df['套利机会'] = pivot_df['价差%'].apply(lambda x: '🟢 高' if x > 1.0 else '🟡 中' if x > 0.3 else '🔴 低')
-                        
-                        # 添加最佳买入和卖出交易所
-                        pivot_df['最佳买入'] = pivot_df[cex_providers[0].name if cex_providers else 'binance'].index.map(
-                            lambda symbol: pivot_df.loc[symbol, [p.name for p in cex_providers]].idxmin()
-                        )
-                        pivot_df['最佳卖出'] = pivot_df[cex_providers[0].name if cex_providers else 'binance'].index.map(
-                            lambda symbol: pivot_df.loc[symbol, [p.name for p in cex_providers]].idxmax()
-                        )
-                    
-                    # 按价差排序（如果启用）
-                    if auto_sort and '价差%' in pivot_df.columns:
-                        pivot_df = pivot_df.sort_values('价差%', ascending=False)
-                    
-                    # 创建样式化的数据框
-                    def style_price_comparison(df):
-                        # 为价格列创建样式
-                        styled = df.style
-                        
-                        if highlight_best:
-                            # 高亮最低价格（绿色）和最高价格（红色）
-                            for symbol in df.index:
-                                if len([col for col in df.columns if col in [p.name for p in cex_providers]]) > 1:
-                                    price_cols = [col for col in df.columns if col in [p.name for p in cex_providers]]
-                                    min_col = df.loc[symbol, price_cols].idxmin()
-                                    max_col = df.loc[symbol, price_cols].idxmax()
-                                    
-                                    styled = styled.applymap(
-                                        lambda x: 'background-color: #90EE90' if x == df.loc[symbol, min_col] else 
-                                                  'background-color: #FFB6C1' if x == df.loc[symbol, max_col] else '',
-                                        subset=pd.IndexSlice[symbol, price_cols]
-                                    )
-                        
-                        return styled
-                    
-                    # Format the dataframe for better display
-                    column_config = {
-                        **{col: st.column_config.NumberColumn(format="$%.4f") for col in pivot_df.columns if col in [p.name for p in cex_providers]},
-                        '最高价': st.column_config.NumberColumn(format="$%.4f"),
-                        '最低价': st.column_config.NumberColumn(format="$%.4f"),
-                        '价差': st.column_config.NumberColumn(format="$%.4f"),
-                        '价差%': st.column_config.NumberColumn(format="%.4f%%")
-                    }
-                    
-                    price_placeholder.dataframe(
-                        pivot_df,
-                        width='stretch',
-                        column_config=column_config
-                    )
-                    
-                    # 添加价格对比图表
-                    if len(pivot_df.columns) > 1 and len(pivot_df) > 0:
-                        st.markdown("**📈 价格对比可视化**")
-                        
-                        # 创建价格对比柱状图
-                        fig_comparison = go.Figure()
-                        
-                        exchange_cols = [col for col in pivot_df.columns if col in [p.name for p in cex_providers]]
-                        colors = px.colors.qualitative.Set3[:len(exchange_cols)]
-                        
-                        for i, exchange in enumerate(exchange_cols):
-                            fig_comparison.add_trace(go.Bar(
-                                name=exchange.capitalize(),
-                                x=pivot_df.index,
-                                y=pivot_df[exchange],
-                                marker_color=colors[i],
-                                text=pivot_df[exchange].round(4),
-                                textposition='auto'
-                            ))
-                        
-                        fig_comparison.update_layout(
-                            title="各交易所价格对比",
-                            xaxis_title="交易对",
-                            yaxis_title="价格 (USD)",
-                            barmode='group',
-                            height=400,
-                            showlegend=True
-                        )
-                        
-                        st.plotly_chart(fig_comparison, use_container_width=True)
-                        
-                        # 价差分析图
-                        if '价差%' in pivot_df.columns:
-                            fig_spread = go.Figure()
-                            
-                            fig_spread.add_trace(go.Bar(
-                                x=pivot_df.index,
-                                y=pivot_df['价差%'],
-                                marker_color=pivot_df['价差%'].apply(
-                                    lambda x: '#FF6B6B' if x > 1.0 else '#4ECDC4' if x > 0.3 else '#95E1D3'
-                                ),
-                                text=pivot_df['价差%'].round(3),
-                                textposition='auto'
-                            ))
-                            
-                            fig_spread.update_layout(
-                                title="价差百分比分析",
-                                xaxis_title="交易对",
-                                yaxis_title="价差百分比 (%)",
-                                height=300
-                            )
-                            
-                            st.plotly_chart(fig_spread, use_container_width=True)
-                
-                else:
-                    price_placeholder.warning("未能获取任何有效的价格数据。")
-            else:
-                price_placeholder.warning("未能获取任何价格数据。")
-        
-        # 免费API价格数据展示
-        st.markdown("---")
-        st.subheader("🆓 免费API价格数据")
-        
-        free_api_col1, free_api_col2 = st.columns([4, 1])
-        
-        with free_api_col2:
-            st.markdown("**数据源选择**")
-            use_coingecko = st.checkbox("CoinGecko", value=True, key="use_coingecko")
-            use_cryptocompare = st.checkbox("CryptoCompare", value=True, key="use_cryptocompare")
-            use_binance_public = st.checkbox("Binance Public", value=True, key="use_binance_public")
+        if not filtered_opps:
+            opp_placeholder.info(f"🔍 未发现收益率 ≥ {min_profit_filter}% 的套利机会")
+        else:
+            df = pd.DataFrame(filtered_opps)
+            df = df.sort_values(by="profit_percentage", ascending=False)
             
-            selected_symbols_free = st.multiselect(
-                "选择交易对",
-                options=free_api_provider.get_popular_symbols(),
-                default=['BTC/USDT', 'ETH/USDT', 'BNB/USDT'],
-                key="selected_symbols_free"
+            # Enhanced display with more professional metrics
+            display_df = df[['profit_percentage', 'buy_at', 'sell_at', 'net_profit_usd', 'symbol']].copy()
+            display_df['路径'] = display_df['buy_at'] + ' → ' + display_df['sell_at']
+            display_df['风险等级'] = display_df['profit_percentage'].apply(
+                lambda x: '🟢 低' if x < 1 else '🟡 中' if x < 3 else '🔴 高'
+            )
+            display_df['执行难度'] = display_df['profit_percentage'].apply(
+                lambda x: '简单' if x < 2 else '中等' if x < 5 else '困难'
             )
             
-            if st.button("🔄 刷新免费数据", key="refresh_free_data"):
-                st.session_state.free_data_refresh = time.time()
+            final_df = display_df[['profit_percentage', '路径', 'net_profit_usd', '风险等级', '执行难度', 'symbol']]
+            final_df.columns = ['收益率(%)', '套利路径', '净利润(USD)', '风险等级', '执行难度', '交易对']
+
+            # Add action buttons for top opportunities
+            if len(final_df) > 0:
+                st.success(f"🎯 发现 {len(final_df)} 个套利机会！")
+                
+            opp_placeholder.dataframe(
+                final_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "收益率(%)": st.column_config.NumberColumn(format="%.4f%%"),
+                    "净利润(USD)": st.column_config.NumberColumn(format="$%.2f"),
+                }
+            )
+
+            # Quick execution buttons for top 3 opportunities
+            if len(final_df) >= 1:
+                st.markdown("**⚡ 快速执行 (模拟)**")
+                exec_col1, exec_col2, exec_col3 = st.columns(3)
+                
+                for i, (idx, row) in enumerate(final_df.head(3).iterrows()):
+                    with [exec_col1, exec_col2, exec_col3][i]:
+                        if st.button(f"执行 #{i+1} ({row['收益率(%)']}%)", key=f"exec_{i}", use_container_width=True):
+                            st.success(f"模拟执行套利: {row['套利路径']} - 预期收益: {row['净利润(USD)']}")
+
+    st.markdown("---")
+
+    # Tools and other data sections
+    st.subheader("💰 套利收益计算器")
+
+    with st.container():
+        calc_col1, calc_col2 = st.columns(2)
         
-        with free_api_col1:
-            if selected_symbols_free and any([use_coingecko, use_cryptocompare, use_binance_public]):
-                with st.spinner("获取免费API数据..."):
-                    try:
-                        # 异步获取免费API数据
-                        async def fetch_free_data():
-                            return await free_api_provider.get_aggregated_prices(selected_symbols_free)
-                        
-                        # 运行异步函数
-                        import nest_asyncio
-                        nest_asyncio.apply()
-                        
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        free_data = loop.run_until_complete(fetch_free_data())
-                        loop.close()
-                        
-                        if free_data:
-                            # 创建免费API数据表格
-                            free_rows = []
-                            for symbol, price_list in free_data.items():
-                                for price_info in price_list:
-                                    free_rows.append({
-                                        '交易对': symbol,
-                                        '数据源': price_info.get('source', 'Unknown'),
-                                        '价格 (USD)': price_info.get('price_usd', 0),
-                                        '24h变化%': price_info.get('change_24h', 0),
-                                        '24h成交量': price_info.get('volume_24h', 0),
-                                        '更新时间': datetime.fromtimestamp(price_info.get('timestamp', time.time())).strftime('%H:%M:%S')
-                                    })
-                            
-                            if free_rows:
-                                df_free = pd.DataFrame(free_rows)
-                                
-                                # 按交易对分组显示
-                                for symbol in selected_symbols_free:
-                                    symbol_data = df_free[df_free['交易对'] == symbol]
-                                    if not symbol_data.empty:
-                                        st.markdown(f"**{symbol}**")
-                                        
-                                        # 计算价差
-                                        if len(symbol_data) > 1:
-                                            max_price = symbol_data['价格 (USD)'].max()
-                                            min_price = symbol_data['价格 (USD)'].min()
-                                            spread_pct = ((max_price - min_price) / min_price * 100) if min_price > 0 else 0
-                                            
-                                            spread_color = "🟢" if spread_pct > 1.0 else "🟡" if spread_pct > 0.3 else "🔴"
-                                            st.caption(f"{spread_color} 价差: {spread_pct:.3f}% (${max_price - min_price:.4f})")
-                                        
-                                        # 显示数据表格
-                                        st.dataframe(
-                                            symbol_data.drop('交易对', axis=1),
-                                            use_container_width=True,
-                                            hide_index=True,
-                                            column_config={
-                                                '价格 (USD)': st.column_config.NumberColumn(format="$%.4f"),
-                                                '24h变化%': st.column_config.NumberColumn(format="%.2f%%"),
-                                                '24h成交量': st.column_config.NumberColumn(format="%.0f")
-                                            }
-                                        )
-                                        
-                                        st.markdown("")
-                            else:
-                                st.info("暂无免费API数据")
-                        else:
-                            st.warning("无法获取免费API数据，请检查网络连接")
-                    
-                    except Exception as e:
-                        st.error(f"获取免费API数据时出错: {str(e)}")
-                        logger.error(f"Free API data error: {e}")
+        with calc_col1:
+            investment_amount = st.number_input("投资金额 (USDT)", min_value=100, max_value=1000000, value=10000, step=100, key="investment")
+            expected_profit = st.number_input("预期收益率 (%)", min_value=0.01, max_value=20.0, value=1.0, step=0.01, key="expected_profit")
+
+        with calc_col2:
+            trading_fee = st.number_input("交易手续费 (%)", min_value=0.0, max_value=1.0, value=0.1, step=0.01, key="trading_fee")
+            slippage = st.number_input("滑点损失 (%)", min_value=0.0, max_value=5.0, value=0.2, step=0.01, key="slippage")
+
+        # Calculate results
+        gross_profit = investment_amount * (expected_profit / 100)
+        total_fees = investment_amount * ((trading_fee * 2 + slippage) / 100)  # Buy + Sell fees + slippage
+        net_profit = gross_profit - total_fees
+        roi = (net_profit / investment_amount) * 100
+        
+        # Display results
+        st.markdown("**📊 收益分析**")
+        result_col1, result_col2, result_col3 = st.columns(3)
+        
+        with result_col1:
+            st.metric("毛利润", f"${gross_profit:.2f}")
+        with result_col2:
+            st.metric("总费用", f"${total_fees:.2f}")
+        with result_col3:
+            color = "normal" if net_profit > 0 else "inverse"
+            st.metric("净利润", f"${net_profit:.2f}", f"{roi:.3f}%")
+        
+        # Risk assessment
+        if net_profit > 0:
+            if roi > 0.5:
+                st.success(f"🟢 高收益机会: 净收益率 {roi:.3f}%")
+            elif roi > 0.1:
+                st.info(f"🟡 中等机会: 净收益率 {roi:.3f}%")
             else:
-                st.info("请选择交易对和数据源以获取免费API数据")
+                st.warning(f"🟠 低收益机会: 净收益率 {roi:.3f}%")
+        else:
+            st.error(f"🔴 亏损风险: 净收益率 {roi:.3f}%")
+
+    st.markdown("---")
+    st.subheader("📊 实时价格对比表")
+
+    # 价格对比控制面板
+    price_control_col1, price_control_col2, price_control_col3 = st.columns(3)
+    with price_control_col1:
+        highlight_best = st.checkbox("高亮最优价格", value=True, key="highlight_best_price")
+    with price_control_col2:
+        show_percentage = st.checkbox("显示价差百分比", value=True, key="show_price_percentage")
+    with price_control_col3:
+        auto_sort = st.checkbox("按价差排序", value=True, key="auto_sort_prices")
+
+    price_placeholder = st.empty()
+
+    with st.spinner("正在获取最新价格..."):
+        tasks = []
+        provider_symbol_pairs = []
+        cex_providers = [p for p in providers if isinstance(p, CEXProvider)]
+        for symbol in st.session_state.selected_symbols:
+            for provider in cex_providers:
+                tasks.append(provider.get_ticker(symbol))
+                provider_symbol_pairs.append((provider.name, symbol))
+
+        all_tickers = safe_run_async(asyncio.gather(*tasks))
+
+        if all_tickers:
+            # Filter out errors and process into a list of dicts
+            processed_tickers = [
+                {'symbol': t['symbol'], 'provider': provider_symbol_pairs[i][0], 'price': t['last'], 'volume': t.get('baseVolume', 0), 'change': t.get('percentage', 0)}
+                for i, t in enumerate(all_tickers) if t and 'error' not in t
+            ]
+            if processed_tickers:
+                price_df = pd.DataFrame(processed_tickers)
+                # Create a pivot table: symbols as rows, providers as columns, prices as values
+                pivot_df = price_df.pivot(index='symbol', columns='provider', values='price')
+
+                # Add price statistics and comparison metrics
+                if len(pivot_df.columns) > 1:
+                    pivot_df['最高价'] = pivot_df.max(axis=1, numeric_only=True)
+                    pivot_df['最低价'] = pivot_df.min(axis=1, numeric_only=True)
+                    pivot_df['价差'] = pivot_df['最高价'] - pivot_df['最低价']
+                    pivot_df['价差%'] = (pivot_df['价差'] / pivot_df['最低价'] * 100).round(4)
+                    pivot_df['套利机会'] = pivot_df['价差%'].apply(lambda x: '🟢 高' if x > 1.0 else '🟡 中' if x > 0.3 else '🔴 低')
+                    
+                    # 添加最佳买入和卖出交易所
+                    pivot_df['最佳买入'] = pivot_df[cex_providers[0].name if cex_providers else 'binance'].index.map(
+                        lambda symbol: pivot_df.loc[symbol, [p.name for p in cex_providers]].idxmin()
+                    )
+                    pivot_df['最佳卖出'] = pivot_df[cex_providers[0].name if cex_providers else 'binance'].index.map(
+                        lambda symbol: pivot_df.loc[symbol, [p.name for p in cex_providers]].idxmax()
+                    )
+
+                # 按价差排序（如果启用）
+                if auto_sort and '价差%' in pivot_df.columns:
+                    pivot_df = pivot_df.sort_values('价差%', ascending=False)
+
+                # 创建样式化的数据框
+                def style_price_comparison(df):
+                    # 为价格列创建样式
+                    styled = df.style
+                    
+                    if highlight_best:
+                        # 高亮最低价格（绿色）和最高价格（红色）
+                        for symbol in df.index:
+                            if len([col for col in df.columns if col in [p.name for p in cex_providers]]) > 1:
+                                price_cols = [col for col in df.columns if col in [p.name for p in cex_providers]]
+                                min_col = df.loc[symbol, price_cols].idxmin()
+                                max_col = df.loc[symbol, price_cols].idxmax()
+
+                                styled = styled.applymap(
+                                    lambda x: 'background-color: #90EE90' if x == df.loc[symbol, min_col] else
+                                              'background-color: #FFB6C1' if x == df.loc[symbol, max_col] else '',
+                                    subset=pd.IndexSlice[symbol, price_cols]
+                                )
+                    
+                    return styled
+
+                # Format the dataframe for better display
+                column_config = {
+                    **{col: st.column_config.NumberColumn(format="$%.4f") for col in pivot_df.columns if col in [p.name for p in cex_providers]},
+                    '最高价': st.column_config.NumberColumn(format="$%.4f"),
+                    '最低价': st.column_config.NumberColumn(format="$%.4f"),
+                    '价差': st.column_config.NumberColumn(format="$%.4f"),
+                    '价差%': st.column_config.NumberColumn(format="%.4f%%")
+                }
+
+                price_placeholder.dataframe(
+                    pivot_df,
+                    use_container_width=True,
+                    column_config=column_config
+                )
+
+                # 添加价格对比图表
+                if len(pivot_df.columns) > 1 and len(pivot_df) > 0:
+                    st.markdown("**📈 价格对比可视化**")
+
+                    # 创建价格对比柱状图
+                    fig_comparison = go.Figure()
+                    
+                    exchange_cols = [col for col in pivot_df.columns if col in [p.name for p in cex_providers]]
+                    colors = px.colors.qualitative.Set3[:len(exchange_cols)]
+                    
+                    for i, exchange in enumerate(exchange_cols):
+                        fig_comparison.add_trace(go.Bar(
+                            name=exchange.capitalize(),
+                            x=pivot_df.index,
+                            y=pivot_df[exchange],
+                            marker_color=colors[i],
+                            text=pivot_df[exchange].round(4),
+                            textposition='auto'
+                        ))
+
+                    fig_comparison.update_layout(
+                        title="各交易所价格对比",
+                        xaxis_title="交易对",
+                        yaxis_title="价格 (USD)",
+                        barmode='group',
+                        height=400,
+                        showlegend=True
+                    )
+                    
+                    st.plotly_chart(fig_comparison, use_container_width=True)
+
+                    # 价差分析图
+                    if '价差%' in pivot_df.columns:
+                        fig_spread = go.Figure()
+                        
+                        fig_spread.add_trace(go.Bar(
+                            x=pivot_df.index,
+                            y=pivot_df['价差%'],
+                            marker_color=pivot_df['价差%'].apply(
+                                lambda x: '#FF6B6B' if x > 1.0 else '#4ECDC4' if x > 0.3 else '#95E1D3'
+                            ),
+                            text=pivot_df['价差%'].round(3),
+                            textposition='auto'
+                        ))
+                        
+                        fig_spread.update_layout(
+                            title="价差百分比分析",
+                            xaxis_title="交易对",
+                            yaxis_title="价差百分比 (%)",
+                            height=300
+                        )
+                        
+                        st.plotly_chart(fig_spread, use_container_width=True)
+
+            else:
+                price_placeholder.warning("未能获取任何有效的价格数据。")
+        else:
+            price_placeholder.warning("未能获取任何价格数据。")
+
+    st.markdown("---")
+    st.subheader("🆓 免费API价格数据")
+
+    free_api_col1, free_api_col2 = st.columns([4, 1])
+
+    with free_api_col2:
+        st.markdown("**数据源选择**")
+        use_coingecko = st.checkbox("CoinGecko", value=True, key="use_coingecko")
+        use_cryptocompare = st.checkbox("CryptoCompare", value=True, key="use_cryptocompare")
+        use_binance_public = st.checkbox("Binance Public", value=True, key="use_binance_public")
+        
+        selected_symbols_free = st.multiselect(
+            "选择交易对",
+            options=free_api_provider.get_popular_symbols(),
+            default=['BTC/USDT', 'ETH/USDT', 'BNB/USDT'],
+            key="selected_symbols_free"
+        )
+        
+        if st.button("🔄 刷新免费数据", key="refresh_free_data"):
+            st.session_state.free_data_refresh = time.time()
+
+    with free_api_col1:
+        if selected_symbols_free and any([use_coingecko, use_cryptocompare, use_binance_public]):
+            with st.spinner("获取免费API数据..."):
+                try:
+                    # 异步获取免费API数据
+                    async def fetch_free_data():
+                        return await free_api_provider.get_aggregated_prices(selected_symbols_free)
+
+                    # 运行异步函数
+                    import nest_asyncio
+                    nest_asyncio.apply()
+
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    free_data = loop.run_until_complete(fetch_free_data())
+                    loop.close()
+
+                    if free_data:
+                        # 创建免费API数据表格
+                        free_rows = []
+                        for symbol, price_list in free_data.items():
+                            for price_info in price_list:
+                                free_rows.append({
+                                    '交易对': symbol,
+                                    '数据源': price_info.get('source', 'Unknown'),
+                                    '价格 (USD)': price_info.get('price_usd', 0),
+                                    '24h变化%': price_info.get('change_24h', 0),
+                                    '24h成交量': price_info.get('volume_24h', 0),
+                                    '更新时间': datetime.fromtimestamp(price_info.get('timestamp', time.time())).strftime('%H:%M:%S')
+                                })
+                        
+                        if free_rows:
+                            df_free = pd.DataFrame(free_rows)
+                            
+                            # 按交易对分组显示
+                            for symbol in selected_symbols_free:
+                                symbol_data = df_free[df_free['交易对'] == symbol]
+                                if not symbol_data.empty:
+                                    st.markdown(f"**{symbol}**")
+
+                                    # 计算价差
+                                    if len(symbol_data) > 1:
+                                        max_price = symbol_data['价格 (USD)'].max()
+                                        min_price = symbol_data['价格 (USD)'].min()
+                                        spread_pct = ((max_price - min_price) / min_price * 100) if min_price > 0 else 0
+                                        
+                                        spread_color = "🟢" if spread_pct > 1.0 else "🟡" if spread_pct > 0.3 else "🔴"
+                                        st.caption(f"{spread_color} 价差: {spread_pct:.3f}% (${max_price - min_price:.4f})")
+
+                                    # 显示数据表格
+                                    st.dataframe(
+                                        symbol_data.drop('交易对', axis=1),
+                                        use_container_width=True,
+                                        hide_index=True,
+                                        column_config={
+                                            '价格 (USD)': st.column_config.NumberColumn(format="$%.4f"),
+                                            '24h变化%': st.column_config.NumberColumn(format="%.2f%%"),
+                                            '24h成交量': st.column_config.NumberColumn(format="%.0f")
+                                        }
+                                    )
+
+                                    st.markdown("")
+                        else:
+                            st.info("暂无免费API数据")
+                    else:
+                        st.warning("无法获取免费API数据，请检查网络连接")
+
+                except Exception as e:
+                    st.error(f"获取免费API数据时出错: {str(e)}")
+                    logger.error(f"Free API data error: {e}")
+        else:
+            st.info("请选择交易对和数据源以获取免费API数据")
 
     # 价差排行榜和热力图
     st.markdown("---")
